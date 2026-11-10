@@ -1,5 +1,4 @@
-# Source-only: never commit ROMs or anything derived from them
-rom/
+# Self-contained fork: the ROM set and the SNES audio sources are tracked.
 *.rom
 *.bin
 res/generated/
@@ -32,3 +31,31 @@ tools/build_organic_*.py
 tools/draw_organic_*.py
 tools/build_low_clutter_stage.py
 tools/render_genesis_concept.py
+
+# SNES port: local dependencies, generated sources and build products
+/build/
+/tools/local/
+/snes/res/*
+/snes/src/logic/
+/snes/inc/gen/
+/snes/src/hud.c
+/snes/src/assets.asm
+/snes/**/*.ps
+/snes/**/*.obj
+/snes/**/*.asm
+!/snes/src/startup.asm
+/snes/*.sfc
+/snes/*.sym
+/snes/*.symfull
+/snes/*.log
+/snes/linkfile
+/snes/hdr.asm
+
+# The only PNG/WAV inputs that are part of the SNES source tree
+!tools/capcom_logo.wav
+!tools/capcom_splash.png
+
+# Tracked inputs for the self-contained SNES build
+!rom/*.rom
+!rom/*.bin
+/port_snes_tecnica/

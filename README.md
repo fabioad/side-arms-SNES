@@ -1,92 +1,214 @@
-# Side Arms MD — native Genesis port (SGDK)
+# Side Arms MD → SNES
 
-A native Sega Mega Drive/Genesis version of Capcom's **Side Arms – Hyper Dyne** (arcade, 1986), written from scratch for the Genesis with SGDK 2.12. It does not emulate or transliterate the arcade program. The original is the specification: its behaviour was reverse-engineered (`docs/re/`) and is re-implemented in native C, with arcade addresses cited in comments. See [docs/architecture.md](docs/architecture.md).
+Port nativo **em desenvolvimento** do código de
+[rester159/side-arms-MD](https://github.com/rester159/side-arms-MD). Este
+repositório é um fork do port MD: o código de referência está na **raiz do
+próprio fork** (`src/`, `inc/`, `tools/`, `res/generated/`), sem submódulo.
 
-**Source-only.** This repository contains no ROM data. Graphics, palettes and level maps are converted from your own MAME `sidearms` ROM set at build time.
+A ROM deste trabalho é **`snes/sidearms_md_snes.sfc`**. A pasta
+`sidearms_snes/` faz parte do repositório e fornece os módulos de áudio `.it`
+já extraídos, necessários para o build SNES.
 
-## Build
+O build MD original continua disponível em **`Makefile.md`** (`make -f
+Makefile.md` ou `make md-rom`). O `Makefile` da raiz compila o port SNES.
 
-Requirements: SGDK at `~/mars/m68k-elf` (override with `GDK=`), Java, Python 3, MAME 0.288 (only needed for the reverse-engineering oracles).
+## Compilar e executar
 
-1. Put the 27 files of the MAME `sidearms` (World) set in `rom/`, or set `SIDEARMS_SOURCE=/path`. `tools/rom_manifest.json` checks every file by SHA-256.
-2. `make` builds `out/release/rom.bin`. `make run` opens it in RetroArch with Genesis Plus GX.
+Requer Python 3 com `numpy` e `Pillow`, PVSnesLib/816-tcc/WLA-DX. Os 27
+arquivos do conjunto arcade World em `rom/` e os módulos `.it` de
+`sidearms_snes/` acompanham o repositório. Cada arquivo é verificado pelo
+SHA-256 do manifesto original.
 
-The project build adapts SGDK's boot entry with `tools/cart_boot.mk`: flash-cart launch
-and console reset both initialize RAM and perform the TMSS check. Use the project
-Makefile so this startup fix and the cartridge-header validation are included.
+**Atenção:** esses arquivos são proprietários e foram incluídos para tornar o
+fork autocontido. Verifique se você tem direito de redistribuí-los antes de
+publicar ou compartilhar o repositório.
 
-## Layout
+```sh
+make                       # extrair, converter e compilar
+make check                 # bytes da ROM + boot/menu/início de partida/áudio
+make check-sections        # entradas nas dez seções e nos doze chefes
+make check-frontend        # Home, SRAM após reset, entrada e controle do P2
+make check-rush            # Boss Rush até o resultado, com hooks de QA
+make check-campaign        # campanha com invulnerabilidade/vidas/auto-hit
+make check-audio           # músicas longas e trocas de módulo no SPC700
+make check-ending          # chefe final, textos finais, ranking e reset com hooks
+make check-render          # sprite parcialmente fora da borda esquerda
+make check-options         # opções, controles, Sound Test e persistência
+make check-items           # portador -> cápsula -> coleta -> robô e oito tiros
+make check-performance     # cadência lógica, quadros pretos e orçamento de VBlank
+make check-collision       # 1.500 casos independentes das rotinas 65816 de contato
+make check-native          # ticks, ações de contato, sprites, recorte e LRU
+make check-ui              # navegação nos menus e introdução com as 15 imagens
+make check-parallax        # estrelas por faixas/colunas, caverna e Home ON/OFF
+make check-boss-performance # rodas Home e chefe final com disparos repetidos, meta 30/s
+make run                   # abrir esta ROM no Snes9x/RetroArch
+```
 
-| path | contents |
-|---|---|
-| `src/`, `inc/` | native game code |
-| `src/gen/`, `inc/gen/`, `res/generated/` | generated from the ROM set (ignored) |
-| `tools/arcade_source.py` | hash-checked ROM access and graphics decoders (MAME layouts) |
-| `tools/build_assets.py` | ROM → Genesis tiles, palettes, maps, sprite patterns |
-| `tools/oracle.py` + `capture.lua` | run the original in MAME headlessly and record video state per frame |
-| `tools/run_rom.py` | headless Genesis Plus GX runner for the built cartridge |
-| `tools/build_levels.py` | native level timelines + terrain map from the extracted data |
-| `tools/agent_build.sh NAME` | private snapshot build (parallel work) |
-| `tools/qa_soak.py` | QA bot: every section 1P/2P, dropped frames, hangs, contact sheets (`docs/qa.md`) |
-| `tools/build_parallax.py`, `tools/parallax_split.py`, `tools/parallax_check.py` | Home parallax tables, map analysis, soak/screenshots (`docs/parallax.md`) |
-| `tools/check` | rebuild all game sources, fail on any compiler warning |
-| `docs/re/` | reverse-engineering notes (hardware, flow/player, levels, objects, sound) |
+O SDK padrão é `../pvsneslib-sdk-4.6`. Para outro local:
+`make PVSNESLIB_HOME=/caminho/do/sdk`. `SIDEARMS_SOURCE` permite selecionar outro
+diretório com o conjunto arcade. Os arquivos de áudio utilizados ficam em
+`sidearms_snes/res/sfx.it` e `sidearms_snes/music/cmd*.it`.
 
-## Video architecture
+`tools/prepare_music.py` reorganiza os módulos em `build/music/`, preservando
+notas, linhas e destinos dos saltos. Isso é necessário porque os arquivos
+fornecidos chegam a 96 padrões, enquanto o SNESMOD possui uma tabela de 64.
+Os módulos originais são preservados. Execute uma compilação por vez; os
+testes Python podem ser executados separadamente sobre a mesma ROM pronta.
+Os efeitos convertidos descartam apenas zeros finais das gravações, mantendo
+os demais samples iguais; isso evita invadir a página reservada ao eco do DSP.
+`tools/test_music.py` verifica notas, duração, saltos e esse corte de silêncio.
 
-| arcade | Genesis |
-|---|---|
-| 384×224 screen | 320×224 (H40); the view sits centred in the arcade's, offset 32 px |
-| BG: 4096×4096 world of 32×32 tiles straight from ROM, 32 palettes | plane B (high priority), a 64×32 ring buffer fed by a 56-slot cache of 32×32 metatiles (≤53 needed on screen); per-stage zones quantized to PAL0/PAL1 |
-| starfield generator (`b_11j`) | plane A (low priority): the generator's 512×256 period precomputed (140 tiles), hardware-scrolled |
-| 128 16×16 sprites, 16 palettes | SAT from a native display list. Patterns are pre-converted at build time into PAL2/PAL3 and streamed into 16×16 and 32×32 VRAM caches. |
-| 64×32 text layer, 2bpp | native 40-column HUD on the window plane (an H-interrupt splits it into top and bottom rows) |
-| static 1024-colour palette (ROM `B3:$8A37`) | quantized per zone; the colour fit is checked visually |
+O protótipo **isolado** de SA-1 é compilado e testado com
+`python3 tools/sa1_probe.py`. Ele gera `build/sa1_probe/sa1_probe.sfc`, executa
+no coprocessador a parte geométrica da colisão dos projéteis com os inimigos
+(16 × 18 pares) via I-RAM compartilhada. O SA-1 recebe dois lotes distintos
+em sequência sem reiniciar; seus 288 resultados por lote são comparados com o
+CPU principal e uma referência independente no Snes9x e no Mesen. Com
+`python3 tools/sa1_probe.py --benchmark`, o Mesen mede também os quadros de
+varredura usados pela cópia de entrada, pelo cálculo no CPU principal, pelo
+SA-1 incluindo acionamento/espera e pela cópia de saída. No lote de teste,
+o CPU principal gastou 134 e 132 linhas nos dois cálculos, o SA-1 com
+acionamento/espera 57 em cada um; copiar 272 bytes de entrada e 576 bytes
+de saída custou cerca de 29 + 36 linhas por chamada.
+O ganho de ponta a ponta para **esse lote isolado** é, portanto, de apenas
+134 / (29 + 57 + 37) ≈ 1,09×, antes de integrar a rotina ao jogo.
+Ao abrir a ROM do protótipo, a tela verde com `SA-1 OK` indica sucesso;
+uma tela vermelha indica timeout. O teste também gera
+`build/sa1_probe/sa1_probe.png` para conferir a imagem. A ROM principal não é
+alterada. Antes do experimento, uma cópia local
+da ROM principal foi preservada em
+`build/backups/sidearms_md_snes_pre_sa1_565a23b7.sfc` (SHA-256
+`565a23b701dff77092ca3d141158a7bbc83a421c7978507c650ce69c3fd6de81`).
+O protótipo não altera o jogo: colisões reais dependem da ordem das atualizações,
+do estado dos projéteis após cada acerto e da movimentação dos inimigos, não
+representados por essa etapa geométrica isolada. O FPS da ROM principal não muda.
 
-Checks so far: BG scroll alignment against an arcade snapshot is pixel-exact (offset 0,0). Replayed arcade sprite RAM lands at identical positions.
+## Ghidra
 
-## Playing
+Foi instalada uma cópia local do Ghidra 12.2 em
+`tools/local/ghidra_12.2_PUBLIC`. O projeto está em
+`build/ghidra/SidearmsMDPort.gpr`; o relatório real de desmontagem e
+decompilação estão em `build/analysis/bank0.bin.txt` (CPU principal arcade) e
+`build/analysis/sound.bin.txt` (CPU de áudio e tabela de comandos).
 
-The boot screen offers two modes:
+`make analyze` repete a importação Z80 com o script
+`tools/ghidra/SidearmsPortAudit.java`. É necessário JDK 25; `GHIDRA_HOME` e
+`GHIDRA_JAVA_HOME` permitem indicar outras instalações. O JDK 25 local fica
+em `tools/local/jdk25`. Os caches são gravados em
+`build/` para evitar a quota esgotada do diretório temporário da máquina.
 
-- **ARCADE**: the arcade's flow. The INSERT COIN screen blinks INSERT COIN and the credit count;
-  **Start inserts a coin** (C too), then Start starts; with credits, Start lets player 2 join or
-  continue. Up Up Down Down Left Right Left Right on that screen plays a chime and opens the
-  **DIP switches** (difficulty 1-8, lives 3/5, bonus life, continue, demo sounds, COLOR; BACK or B
-  returns to the boot screen).
-- **HOME**: the Home screen (SIDE ARMS + MD): START GAME (3 credits by default), BOSS RUSH, OPTIONS, BACK.
-  OPTIONS: difficulty (EASY, the arcade's levels 1-8, HARD), lives 1-7, bonus life (the four arcade
-  tables or none), continue (off / limited by credits / unlimited), credits 1-9, COLOR, PARALLAX,
-  CONTROLS, SOUND TEST.
+## Implementação e limites atuais
 
-**PARALLAX** (Home, a port mode, ON by default): depth scrolling in every section — the starfield
-split into four depth layers (per row, or per column on the long vertical legs), section 5's cave
-wall as a slower far layer. Gameplay is unchanged; Arcade mode keeps the arcade view. Details: [docs/parallax.md](docs/parallax.md).
+`tools/prepare_snes.py` adapta as fontes C de jogadores, armas, inimigos,
+chefes, fases e fluxo do MD. Os módulos nativos em `snes/src/` implementam
+PPU, cache de tiles, OAM, controles, SRAM e SPC700. Não há emulação de 68000
+ou Z80 no runtime. `build/source_manifest.json` registra as fontes de origem.
 
-**BOSS RUSH** (Home, a port mode): the game's 12 bosses in the arcade order — the sprite bosses of
-sections 1, 3, 5, 7 (x2), 8 (x2), 9, the three wheels and the final boss — each in its own arena
-(the arcade's boss halt of that section, normal enemies off, the arcade's boss behaviour). No lives:
-an 8-segment energy bar under 1UP / 2UP; a hit costs one segment (2 s blinking invulnerability,
-weapons kept), a terrain crush too (the ship re-enters at its spawn point). +2 segments after each
-boss. Start loadout: BIT, S.G., M.B.L., 3WAY at level 1, AUTO, speed 2 (the boss POW drops still
-work). Player 2 joins with Start. The best run (bosses defeated, then fight time) is saved in SRAM
-and shown on the Home screen. Details: [docs/frontend.md](docs/frontend.md#boss-rush).
+O backend mantém as coordenadas lógicas de 320×224 e exibe os 256 pixels
+centrais. Os controles padrão são Y para disparar à esquerda, B à direita,
+A para trocar arma, L/R para anterior/próxima arma, X para travar disparo
+e Start para crédito/início. O mapeamento lógico do MD permanece configurável.
 
-Controls (default): **A** fire left, **B** fire right, **C** next weapon, **Start** start / coin.
-CONTROLS remaps the three actions to A/B/C (or X/Y/Z on a 6-button pad), sets X/Y/Z (6-button) to
-previous / next / a given weapon or LOCK FIRE (fires the way the ship faces without turning; default
-X = previous, Y = next, Z = lock), and switches autofire on per fire button (one shot every 4 frames,
-the arcade AUTO weapon's rate). Menus: B goes back. A+B+C+Start returns to the boot screen.
+**Este ainda não é um port completo nem certificado como fiel.** O desempenho
+atinge 38,69–48,69 atualizações lógicas/s nos 13 cenários de seções/chefes
+de referência, mas ainda não mantém 60/s. O HUD precisa de revisão visual integral em 32 colunas.
+O áudio usa os módulos locais e uma
+tradução parcial dos comandos de efeitos; não reproduz integralmente o driver
+YM2612/PSG do MD. A música $38 (demonstração de patches do Sound Test) ainda
+excede a RAM do SPC700; a verificação de orçamento impede seu carregamento
+para evitar travamento. A cobertura de entradas de fase não substitui uma
+partida normal completa e uma comparação com o MD.
 
-The ranking, all settings and the Boss Rush record are kept in battery SRAM.
+Os testes de Home, SRAM após reset e entrada/movimento do segundo jogador
+passaram. O Boss Rush alcançou o resultado com os doze chefes usando os hooks
+de QA. O teste isolado do chefe final percorreu parabéns e staff, retornou ao
+aviso inicial e confirmou o ranking após reset. A campanha completa percorreu
+as dez seções e retornou ao aviso com os mesmos hooks de QA: invulnerabilidade,
+vidas extras e auto-hit dos chefes. Os JSONs incluem o SHA-256
+da ROM para identificar a versão testada.
 
-## Colour
+A verificação da PPU compara o mapa e os tiles de fonte do Sound Test com os
+dados preparados, além dos sprites dos dois jogadores e de um cenário. A
+rotina `native_offset` em 65816 preserva o avanço de banco em acessos acima de
+64 KiB; a expressão de ponteiro equivalente do 816-tcc descartava esse avanço.
+Os arrays menores são posicionados integralmente dentro de um banco.
 
-The arcade palette (4 bits per channel) is converted to the Genesis's 3 bits per channel. Each background zone gets two fitted palettes; sprite patterns each choose the better of two shared sprite palettes. The DIP-switch / options screens have a **COLOR** setting:
+O cenário agora transfere apenas as bordas novas quando a câmera avança um
+metatile, mantendo a reconstrução integral para mudanças de zona ou saltos.
+O cache de sprites pequenos indexa diretamente código e cor em WRAM e o OAM
+usa uma tabela de máscaras em vez de deslocamentos variáveis. A colisão de
+projéteis usa limites diretos. Essas mudanças preservaram a bateria de seções,
+mas não resolveram o custo total da lógica e da renderização geradas pelo
+compilador 816-tcc; atingir 60 atualizações/s ainda requer trabalho substancial
+nesses caminhos. O driver de áudio também continua pendente.
 
-- **ARCADE**: the converted arcade colours.
-- **VIVID** (default): every palette passes through a build-time table that raises saturation (×1.4) and brightness (×1.15), keeping greys neutral. It compensates for the Genesis's coarser colour steps and the darker output of common emulators.
+O parallax Home foi portado: quatro profundidades de estrelas por faixas,
+deslocamento vertical por colunas nas seções 3/6, textura distante da caverna
+na seção 5 e variantes Home dos cenários/rodas. As velocidades, as regiões
+e a compensação de cortes de câmera seguem os dados do MD. O SNES usa
+HDMA no canal 7 para o deslocamento horizontal do BG3; nas colunas, mapas
+pré-convertidos para oito fases verticais preservam os pixels e cores sem
+renderização de pixels em tempo real. Mapas, scroll e HDMA são comprometidos
+no VBlank. As cores do cenário usam CGRAM 64..95, deixando espaço para as
+combinações de cores das estrelas no BG3. Arcade e PARALLAX OFF conservam
+o movimento simples. Não foram ativadas faixas de montanhas: elas também
+estão desativadas na referência MD.
 
-## Boot intros (local only)
+`check-parallax` compara os pixels de estrelas renderizados com a ROM MD,
+confere a textura da caverna, paletas, tiles adicionais das rodas e transições
+entre os modos, incluindo cortes de câmera e desligamento. Os 12 casos
+passaram no Snes9x. A amostra Home de 1.500 quadros por seção (1/3/5/6),
+com invulnerabilidade e warps de QA, mediu 47,12 / 46,12 / 38,68 / 30,08
+atualizações/s com o efeito ligado, sem quadros pretos, DMA tardio ou overflow.
+Com o efeito desligado pelo menu, os quatro cenários mantiveram o modo simples.
+Os quatro cenários Home e os 13 cenários Arcade agora exigem pelo menos 30/s
+nos testes. Esses ensaios não substituem uma
+campanha completa nem testes em hardware real.
 
-The SEGA logo (with the "SEGA" chant) and the CAPCOM logo (with its FM jingle) play at boot when the intro kits are present in `src/intro/`. Those kits contain data from other games, so the folder is gitignored and never committed. Run `tools/fetch_intros.sh` to copy them from the sibling ports (`_capcom/son son/sonson_native`, `_capcom/_capcom logo intro`). Without them the game builds and boots straight to its menu.
+A cena de referência da primeira seção alcança **51,04 atualizações/s**,
+medidas em 3.000 quadros de vídeo com invulnerabilidade e sem disparo do
+jogador. A medição anterior à meta de 30/s era 25,72/s; a inicial, 15,06/s.
+A navegação pelos menus, para os mesmos 80 ticks de entrada, passou de
+470 para 100 quadros de vídeo (**10,21 para 48 atualizações/s**). A sequência
+da Terra na introdução, até entrar na fase após confirmar o nome, passou de
+1.753 para 365 quadros (**12,18 para 58,52 atualizações/s**), preservando as
+15 imagens e os temporizadores originais. São medições em Snes9x NTSC,
+normalizadas a 60 quadros de vídeo/s.
+
+**30/s é a meta das amostras de referência, não um mínimo garantido em toda partida.**
+Nos 13 cenários de seções/chefes, os mesmos 8.450 ticks passaram de 24.835
+para 11.255 quadros de vídeo. O chefe final com disparos repetidos mediu 30,70/s
+em 6.000 quadros, mantendo o chefe ativo. A amostra de gameplay manteve zero
+quadros pretos, zero DMA tardio, zero overflow e zero timeout de áudio.
+
+O DMA lê gráficos imutáveis diretamente da ROM e copia dados transitórios
+para WRAM. Os lotes respeitam o orçamento restante do VBlank; o laço pode
+aproveitar um VBlank iniciado, mantendo no máximo um commit lógico por
+VBlank. Os mapas da introdução já estão no formato SNES 32×28 na ROM e
+são enviados atomicamente. Os menus redesenham apenas as linhas alteradas;
+o HUD usa um índice de glifos validado e um mapa de posições pré-calculado.
+Movimento, contato, contagem por faixa, busca/LRU e submissão de sprites
+usam caminhos nativos 65816, com os caminhos gerais em C preservados.
+
+As três imagens das rodas gigantes são preparadas durante a construção da ROM.
+Os padrões ficam residentes durante o encontro; cada rotação troca apenas o mapa
+BG2 de 32×32 células. No ensaio Home da seção 2, com os mesmos 6.000 quadros
+e hooks de QA, a vazão passou de 13,34 para 42,78/s. As 104 pausas recorrentes
+de 34 quadros desapareceram; resta uma carga inicial dos padrões de 11 quadros.
+O DMA pode dividir um descritor entre VBlanks e aproveitar o orçamento restante,
+reservando tempo para OAM, paleta e scroll. Os testes diferenciais de memória,
+terreno, animações, contatos, armas e desenho comparam os caminhos 65816 com C
+ou com os dados de origem. Detalhes em [docs/PERFORMANCE_BOSSES.md](docs/PERFORMANCE_BOSSES.md).
+As funções simples de coordenadas são expandidas no ponto de uso.
+
+Os testes comparam 1.500 casos de geometria, cadência, terreno e snapshot de
+tiros com uma referência independente; 1.000 ticks/ações de contato e
+1.200 submissões de sprites com seus caminhos em C; e 1.200 casos de cache
+com a regra original de LRU. A escrita das 1.120 células lógicas do painel
+também coincidiu com a implementação C da ROM anterior. Os testes de PPU,
+itens, transformação, oito tiros, opções, final e ranking após reset
+complementam essas verificações.
+
+As evidências de execução ficam em `build/qa/` e os logs em `build/`. Os testes
+de seção usam invulnerabilidade e o hook `dbg_warp` original; suas capturas
+não representam uma partida completa sem intervenção.
